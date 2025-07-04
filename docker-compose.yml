@@ -1,0 +1,171 @@
+networks:
+  net:
+    driver: bridge
+    name: rms_net
+    ipam:
+      config:
+        - subnet: 192.168.128.0/20  # Define the subnet for the network
+          gateway: 192.168.128.1    # Define the gateway for the network
+services:
+  reverse-proxy:
+    # The official v3 Traefik docker image
+    image: "traefik:v3"
+    platform: linux/arm64/v8 
+    container_name: "traefik_updater"
+    environment:
+      - TRAEFIK_LOG=true
+      - TZ="Africa/Johannesburg"
+    # Enables the web UI and tells Traefik to listen to docker
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - --accesslog.fields.names.StartUTC=drop
+      # - "--entrypoints.web.address=:80"
+      # - "--entrypoints.websecure.address=:443"
+      #- "--entrypoints.mysql.address=192.168.128.10:3306"
+      - "--providers.docker.network=rms_net" # Specify the Docker network
+      - "--log.level=DEBUG" # Optional: Set log level to DEBUG for troubleshooting
+      - "--log.filePath=/traefik.log" # Optional: Log file path
+    ports:
+      # The http port port on left - host machine : port on container
+      - "7201:80"
+      # The web UI (enabled by --api.insecure=true) traefik dashboard
+      - "7202:8080"
+      # The gprs server
+      # - "50051:50051"
+    volumes:
+      #So that Traefik can listen to the docker events
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "$PWD/logs:/logs" # Optional: Mount a log file - - "--log.filePath=/logs/traefik.log"
+    networks:
+      net:
+        ipv4_address: 192.168.128.2  # Define the static IP address for reverse-proxy
+    labels:
+      - "traefik.http.routers.rmsloader.rule=Host(`callgate`) && Path(`/`)"
+  mysql-rms:
+    image: mysql:9.3.0
+    platform: linux/arm64/v8 
+    container_name: mysql-rms
+    # restart: always  # Ensures the container restarts if it stops
+    # command: --default-authentication-plugin=caching_sha2_password
+    # command: --default-authentication-plugin=mysql_native_password
+    env_file:  
+      - "./backend/.env.devrms"
+    environment:
+      - MYSQL_ALLOW_EMPTY_PASSWORD=false
+      - MYSQL_LOG_CONSOLE=true  # Enable logging to console
+      - MYSQL_LOG_ERROR=/var/log/mysql/error.log  # Specify error log file path
+    volumes:
+      - mysql_data_rms:/var/lib/mysql  # Use the correct volume 
+      - ./backend/logs/mysqlcdr:/var/log/mysql  # Mount host directory for log files
+    ports:
+      - 3306:3306
+    networks:
+      net:
+        ipv4_address: 192.168.128.10  # Define the static IP address for MySQL
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  adminer:
+    image: adminer:5.3.0
+    platform: linux/arm64/v8 
+    restart: always
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+      UPLOAD: 4096M
+      MEMORY: 700M
+    depends_on:
+      - mysql-rms
+    ports:
+      # - 8080:8080
+      - 7200:8080
+    networks:
+      net:
+        ipv4_address: 192.168.128.12  # Define the static IP address for adminer
+    command:  # Configure adminer for large uploads
+      [
+        "php",
+        "-d",
+        "memory_limit=2G",
+        "-d",
+        "post_max_size=700M",
+        "-d",
+        "upload_max_filesize=700M",
+        "-S",
+        "0.0.0.0:8080",
+        "-t",
+        "/var/www/html",
+      ]
+    logging: 
+      driver: "json-file"
+      options:
+        max-file: 5
+        max-size: 15m
+  # backend:
+  # A container that runs the gRPC server
+  rmsloader:
+    build:
+      context: "./backend"
+      target: "builder"
+      dockerfile: Dockerfile
+    # A container that exposes an API to show its IP address
+    container_name: "go-updater"
+    image: "rmsloader:latest"
+    platform: linux/arm64/v8
+     # platform: linux/amd64
+    expose:
+    # 3000 http server 50051 gprs server
+      # - "3000"
+      - "50051" 
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tcp.services.recordingsdepo.loadbalancer.server.port=50051" # Specify the port to be used
+      - "traefik.tcp.routers.recordingsdepo.rule=HostSNI(`*`)" # Match any SNI (Server Name Indication) header
+      - "traefik.http.routers.recordingdepo.entrypoints=web"
+      # - "traefik.tcp.services.grpc-service.loadbalancer.server.port=50051" # Specify the port to be used
+      # - "traefik.http.routers.recordingsdepo.middlewares=cors" # Apply CORS middleware to your backend service
+    env_file:  
+      - path: "./backend/.env.dev"
+        required: true
+    environment:
+      - ENV=dev
+      # - SMB_USERNAME=${SMB_USERNAME}
+      # - SMB_PASSWORD=${SMB_PASSWORD}
+      # - DB_USER=${DB_USER}
+      # - DB_PASSWORD=${DB_PASSWORD}
+      # - DB_ADDR=${DB_ADDR}
+      - ALLOWED_ORIGINS=http://spa-to-http:7100
+    # linking the enviromental params
+    volumes:
+      # - ./init.sh:/init.sh
+      - ./backend:/go/src/app
+      # log mounts
+      - "$PWD/logs:/root/logs"
+      #   dev only link to recordings
+      - /Users/hendrikpienaar/github.com/data/rms_cdrs:/root/recordings
+      - /Users/hendrikpienaar/github.com/data/rms_cdrs/csv:/root/recordings/csv'
+    networks:
+      net:
+        ipv4_address: 192.168.128.3  # Define the static IP address for go-wavserver
+    depends_on:
+      mysql-rms:
+        condition: service_healthy
+      reverse-proxy:
+        condition: service_started
+    logging: 
+      driver: "json-file"
+      options:
+        max-file: 5
+        max-size: 15m
+    ports:
+      # - "3000:8080" # http server
+      - "50051:50051" # gprs server
+volumes:
+  mysql_data_rms:  # Ensure this volume is defined globally
+    external: true
+  logs:
+    external: true
+
