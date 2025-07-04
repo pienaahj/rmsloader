@@ -420,4 +420,11 @@ FodyWeavers.xsd
 # security files
 *id_rsa*
 *.pub
+id_rsa
+*.pem
+*.key
+*.p12
 
+#possible large txt and csv files
+*.txt
+*.csv
