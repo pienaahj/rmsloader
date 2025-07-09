@@ -1,10 +1,13 @@
+// Package logwrapper implements logrus and custom logs
 package logwrapper
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 
 	"sync"
 
@@ -32,6 +35,8 @@ func NewLogger(logFile *os.File) *StandardLogger {
 	var (
 		baseLogger = logrus.New()
 	)
+	multiWriter := io.MultiWriter(logFile, os.Stdout)
+	baseLogger.SetOutput(multiWriter)
 
 	standardLogger := &StandardLogger{
 		L:    baseLogger,
@@ -95,17 +100,19 @@ func CreateLogger() {
 
 func init() {
 	// get the log file path
-	dir, err := os.Getwd()
-	if err != nil {
-		log.Println("Error getting the current working directory")
-	}
-	logPath := dir + "/logs/appLogs.txt"
+	// dir, err := os.Getwd()
+	// if err != nil {
+	// 	log.Println("Error getting the current working directory")
+	// }
+	logDir := "/root/logs"
+	logFileName := "appLogs.txt"
+	// logPath := logDir + "/appLogs.txt"
+	logPath := filepath.Join(logDir, logFileName)
 	log.Println("Log path is ", logPath)
-	logDir := "logs"
 	// Create the log directory if it doesn't exist
-	if _, err := os.Stat(logDir); os.IsNotExist(err) {
-		log.Println("Log directory does not exist, creating it")
-		os.Mkdir(logDir, 0755)
+	err := os.Mkdir(logDir, 0755)
+	if err != nil {
+		log.Printf("Failed to create log directory %s: %v", logDir, err)
 	}
 
 	// open the app log file
@@ -195,6 +202,7 @@ var (
 	errResponseMessage          = Event{53, "%s: Response error: %v with message %s"}
 	errDecodeMessage            = Event{54, "%s: Could not decode %v from data: %v"}
 	errRequetMessage            = Event{55, "%s: Request error: %v with message %s"}
+	errRecordingfileMessage     = Event{56, "%s: Recording file error: %v with message %s"}
 
 	// information
 	infoDirUsedMessage           = Event{60, "%s: Working dir used to read files: %s"}
@@ -475,14 +483,19 @@ func (l *StandardLogger) ErrResponseMessage(argumentCall string, argumentName er
 	l.L.Errorf(errResponseMessage.message, argumentCall, argumentName, argumentError)
 }
 
+// errRequetMessage   is a standard error message
+func (l *StandardLogger) ErrRequetMessage(argumentCall string, argumentName error, argumentError string) {
+	l.L.Errorf(errRequetMessage.message, argumentCall, argumentName, argumentError)
+}
+
 // ErrDecodeMessage  is a standard error message
 func (l *StandardLogger) ErrDecodeMessage(argumentCall string, argumentName error, argumentError string) {
 	l.L.Errorf(errDecodeMessage.message, argumentCall, argumentName, argumentError)
 }
 
-// ErrRequetMessage  is a standard error message
-func (l *StandardLogger) ErrRequetMessage(argumentCall string, argumentName error, argumentError string) {
-	l.L.Errorf(errRequetMessage.message, argumentCall, argumentName, argumentError)
+// errRecordingfileMessage  is a standard error message
+func (l *StandardLogger) ErrRecordingfileMessage(argumentCall string, argumentName error, argumentError string) {
+	l.L.Errorf(errRecordingfileMessage.message, argumentCall, argumentName, argumentError)
 }
 
 //*****************************************info messages*************************************************

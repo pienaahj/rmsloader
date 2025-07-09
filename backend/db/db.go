@@ -14,25 +14,26 @@ import (
 
 
 var CallFrom string // Declare CallFrom variable for logging
+const TableCDR = "rmscdr"
 
 var schema = `
-CREATE TABLE IF NOT EXISTS rsmcdr (
+CREATE TABLE IF NOT EXISTS rmscdr (
 	id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-	uid VARCHAR(20) NOT NULL,
+	uid VARCHAR(50) NOT NULL,
 	direction VARCHAR(10),
 	time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	timestamp INTEGER,    
+	unix_timestamp INTEGER,    
 	flagged TINYINT(1),  
 	source VARCHAR(100),
 	destination VARCHAR(100),
 	duration INTEGER,    
-	size INTEGER,    
-	exists TINYINT(1), 
+	size DOUBLE,    
+	exists_in_db TINYINT(1), 
 	local_copy TINYINT(1),     
 	authentic VARCHAR(20),
 	sip_call_id VARCHAR(150),
 	file_name VARCHAR(100),
-	INDEX (timestamp, uid)
+	INDEX (unix_timestamp, uid)
 );`
 
 // CheckDB checks if the database is up and running
@@ -91,7 +92,7 @@ func AddCDR(ctx context.Context, db *sqlx.DB, r *model.RMSCDR) (int64, error) {
 	}
 	defer conn.Close() // Return the connection to the pool.
 	// check if the table is existing
-	tableOK, err := CheckTableExistsWithShow(ctx, db, "rsmcdr")
+	tableOK, err := CheckTableExistsWithShow(ctx, db, TableCDR)
 	if err != nil {
 		li.Logger.ErrMySQLFilesMessage(CallFrom, err)
 		return 0, err
@@ -110,8 +111,8 @@ func AddCDR(ctx context.Context, db *sqlx.DB, r *model.RMSCDR) (int64, error) {
 	tx := db.MustBeginTx(ctx, &sql.TxOptions{Isolation: 6, ReadOnly: false})
 	// spew.Dump(r)
 	//durationInSeconds := int64(record.Duration.Seconds())
-	res, err := tx.NamedExecContext(ctx, `INSERT INTO rsmcdr (uid, direction, time, timestamp, flagged, source, destination, duration, size, exists, local_copy, authentic, sip_call_id, file_name)
-		 VALUES (:uid, :direction, :time, :timestamp, :flagged, :source, :duration, :destination, :talk_duration, :size, :exists, :local_copy, :authentic, :sip_call_id, :file_name)`, r)
+	res, err := tx.NamedExecContext(ctx, `INSERT INTO rmscdr (uid, direction, time, unix_timestamp, flagged, source, destination, duration, size, exists_in_db, local_copy, authentic, sip_call_id, file_name)
+		 VALUES (:uid, :direction, :time, :unix_timestamp, :flagged, :source, :destination, :duration, :size, :exists_in_db, :local_copy, :authentic, :sip_call_id, :file_name)`, r)
 	if err != nil {
 		li.Logger.L.Printf("problematic cdr: %#v", r)
 		li.Logger.ErrMySQLWriteMessage(CallFrom, err)
@@ -129,8 +130,35 @@ func AddCDR(ctx context.Context, db *sqlx.DB, r *model.RMSCDR) (int64, error) {
 
 // insertCDRsBatch executes batch inserts for better performance
 func InsertCDRsBatch(ctx context.Context, db *sqlx.DB, batch []model.RMSCDR) (int64, error) {
-	query := `INSERT INTO rsmcdr (uid, direction, time, timestamp, flagged, source, destination, duration, size, exists, local_copy, authentic, sip_call_id, file_name)
-		 VALUES (:uid, :direction, :time, :timestamp, :flagged, :source, :duration, :destination, :talk_duration, :size, :exists, :local_copy, :authentic, :sip_call_id, :file_name)`
+	CallFrom = "InsertCDRsBatch in db "
+	// check if db is still contactable
+	status := "up"
+	if err := db.PingContext(ctx); err != nil {
+		status = "down"
+	}
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		li.Logger.ErrMySQLConnectionMessage(CallFrom, err)
+		return 0, err
+	}
+	defer conn.Close() // Return the connection to the pool.
+	// check if the table is existing
+	tableOK, err := CheckTableExistsWithShow(ctx, db, TableCDR)
+	if err != nil {
+		li.Logger.ErrMySQLFilesMessage(CallFrom, err)
+		return 0, err
+	}
+	if !tableOK {
+		li.Logger.L.Info(CallFrom, "Table does not exist, create it")
+		// create the schema if it doesn't exist
+		result := db.MustExecContext(ctx, schema)
+		if result != nil {
+			msg := fmt.Sprintf("db : %s schema created successfully, result %v ", status, result)
+			li.Logger.L.Info(CallFrom, msg)
+		}
+	}
+	query := `INSERT INTO rmscdr (uid, direction, time, unix_timestamp, flagged, source, destination, duration, size, exists_in_db, local_copy, authentic, sip_call_id, file_name)
+		 VALUES (:uid, :direction, :time, :unix_timestamp, :flagged, :source, :destination, :duration, :size, :exists_in_db, :local_copy, :authentic, :sip_call_id, :file_name)`
 	res, err := db.NamedExecContext(ctx, query, batch)
 	if err != nil {
 		return 0, err
@@ -140,7 +168,7 @@ func InsertCDRsBatch(ctx context.Context, db *sqlx.DB, batch []model.RMSCDR) (in
 	if err != nil {
 		return 0, err
 	}
-
+	li.Logger.L.Info(CallFrom, "Inserted batch rows: ", rowsAffected)
 	return rowsAffected, nil
 }
 
@@ -183,9 +211,19 @@ func CountCDR(ctx context.Context, db *sqlx.DB) (int64, error) {
 
 // get a cdr by uid
 func GetCDRByUID(ctx context.Context, db *sqlx.DB, uid string) (string, error) {
-	CallFrom = "GetCDRById "
+	CallFrom = "GetCDRByUID "
 	var cdr *model.RMSCDR
-	err := db.GetContext(ctx, &cdr, "SELECT * FROM cdr WHERE uid = ?", uid)
+	tableOK, err := CheckTableExistsWithShow(ctx, db, TableCDR)
+	if err != nil {
+		li.Logger.ErrMySQLFilesMessage(CallFrom, err)
+		return "", err
+	}
+	if !tableOK {
+		li.Logger.L.Info(CallFrom, "Table does not exist")
+		err := errors.New("table does not exist")
+		return "", err
+	}
+	err = db.GetContext(ctx, &cdr, "SELECT * FROM rmscdr WHERE uid = ?", uid)
 	if err != nil {
 		li.Logger.ErrMySQLRetrieveMessage(CallFrom, fmt.Sprint(uid), err)
 		return "", err

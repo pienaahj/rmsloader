@@ -17,34 +17,22 @@ type Dates struct {
 }
 
 // DatesResponse represents the response sent for a dates request
-// type DatesResponse struct {
-// 	// The recording id
-// 	ID string `db:"id" json:"id"`
-// 	// uid
-// 	UID string `db:"uid" json:"uid"`
-// 	// The Direction
-// 	Direction string `db:"direction" json:"direction"`
-// 	// The recording date
-// 	Date time.Time `db:"date" json:"date"`
-// 	// flagged
-// 	Flagged bool `db:"flagged" json:"flagged"`
-// 	// The Caller
-// 	Source string `db:"source" json:"source"`
-// 	// The callee
-// 	Destination string `db:"destination" json:"destination"`
-// 	// duration
-// 	Duration int64 `db:"duration" json:"duration"`
-// 	// The size
-// 	Size int64 `db:"size" json:"size"`
-// 	// Exists on server
-// 	Exists bool `db:"exists" json:"exists"`
-// 	// Local copy
-// 	LocalCopy bool `db:"local_copy" json:"local_copy"`
-// 	// Is Authentic
-// 	Authentic bool `db:"authentic" json:"authentic"`
-// 	// The raw string representation of filename
-// 	FileName string `db:"file_name" json:"file_name"`
-// }
+type DatesResponse struct {
+	ID int64 `db:"id" json:"id"`
+	UID string `db:"uid" json:"uid"`
+	Direction string `db:"direction" json:"direction"`
+	RecordingDate int64 `db:"recording_date" json:"recording_date"` // unix timestamp
+	Flagged bool `db:"flagged" json:"flagged"`
+	Caller string `db:"caller" json:"caller"`
+	Callee string `db:"callee" json:"callee"`
+	Duration int64 `db:"duration" json:"duration"`
+	Size int64 `db:"size" json:"size"`
+	ExistsINDB bool `db:"exists_in_db" json:"exists_in_db"`
+	LocalCopy bool `db:"local_copy" json:"local_copy"`
+	Authentic string `db:"authentic" json:"authentic"`
+	RawFilename string `db:"raw_filename" json:"raw_filename"`
+	SipCallID string `db:"sip_call_id" json:"sip_call_id"`
+}
 
 // Recording represents a wav file recording in the database.
 type RMSCDR struct {
@@ -57,7 +45,7 @@ type RMSCDR struct {
 	// The recording date
 	Time time.Time `db:"time" json:"time`
 	// timestamp
-	Timestamp int64 `db:"timestamp" json:"timestamp"`
+	UnixTimestamp int64 `db:"unix_timestamp" json:"unix_timestamp"`
 	// flagged
 	Flagged bool `db:"flagged" json:"flagged"`
 	// The Caller
@@ -69,9 +57,9 @@ type RMSCDR struct {
 	// duration
 	Duration      int64         `db:"duration"` // this is duration in seconds
 	// The size
-	Size int64 `db:"size" json:"size"`
+	Size float64 `db:"size" json:"size"`
 	// Exists on server
-	Exists bool `db:"exists" json:"exists"`
+	ExistsINDB bool `db:"exists_in_db" json:"exists_in_db"`
 	// Local copy
 	LocalCopy bool `db:"local_copy" json:"local_copy"`
 	// Is Authentic

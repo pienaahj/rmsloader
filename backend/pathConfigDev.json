@@ -1,0 +1,11 @@
+{
+    "source_path"      	 : "'/Volumes/External Data/cdrdata/Euphoria_data/Recordings_rms'",
+	"csv_path" 			 : "/Users/hendrikpienaar/github.com/data/rms_cdrs/csv",
+	"destination_path"    : "/logs/done",
+	"log_path"            : "/logs",
+	"app_logs_path"        : "/logs/appLogs.txt",
+	"db_logs"             : "/logs/databaseLogs.txt",
+	"odd_dates"           : "/logs/oddDates.txt",
+	"analysis_logs"       : "/logs/analysis.txt",
+	"temp_storage"        : "/temp"
+}

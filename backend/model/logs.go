@@ -20,15 +20,15 @@ var LogFiles map[string]string
 // make the log file map to close them later
 var LogFileLiterals map[string]*os.File
 var PathVars struct {
-	SourcePath      string `json:"sourcePath"`
-	ExtensionsFile  string `json:"extensionsFile"`
-	DestinationPath string `json:"destinationPath"`
-	LogPath         string `json:"logPath"`
-	AppLogsPath     string `json:"appLogsPath"`
-	DbLogs          string `json:"dbLogs"`
-	OddDates        string `json:"oddDates"`
-	AnalysisLogs    string `json:"analysisLogs"`
-	TempStorage     string `json:"tempStorage"`
+	SourcePath      string `json:"source_path"`
+	CSVPath		    string `json:"csv_path"`
+	DestinationPath string `json:"destination_path"`
+	LogPath         string `json:"log_path"`
+	AppLogsPath     string `json:"app_logs_path"`
+	DbLogs          string `json:"db_logs"`
+	OddDates        string `json:"odd_dates"`
+	AnalysisLogs    string `json:"analysis_logs"`
+	TempStorage     string `json:"temp_storage"`
 }
 
 func ProcessLogFileLocations() map[string]string {
@@ -39,6 +39,7 @@ func ProcessLogFileLocations() map[string]string {
 	paths, err := os.Open("./pathConfig.json")
 	if err != nil {
 		li.Logger.L.WithFields(logrus.Fields{
+			"CallFrom": CallFrom,
 			"err": err,
 		}).Error("Failed to load pathConfig.json")
 		os.Exit(1)
@@ -55,7 +56,7 @@ func ProcessLogFileLocations() map[string]string {
 	// make the logFiles map
 	logFiles := make(map[string]string)
 	logFiles["SourcePath"] = PathVars.SourcePath
-	logFiles["ExtensionsFile"] = PathVars.ExtensionsFile
+	logFiles["CSVPath"] = PathVars.CSVPath
 	logFiles["DestinationPath"] = PathVars.DestinationPath
 	logFiles["LogPath"] = PathVars.LogPath
 	logFiles["AppLogsPath"] = PathVars.AppLogsPath
@@ -83,9 +84,10 @@ func ProcessLogFileLocations() map[string]string {
 			"called from": CallFrom,
 			"folder":      PathVars.TempStorage,
 			"err":         err,
-		}).Error("Failed to create destination folder")
+		}).Error("Failed to create tempstorage folder")
 		return nil
 	}
+	li.Logger.L.Printf("Created tempstorage folder: %s", PathVars.TempStorage)
 	// change to the log folder
 	err = os.Chdir(PathVars.LogPath)
 	if err != nil {
@@ -96,8 +98,8 @@ func ProcessLogFileLocations() map[string]string {
 		}).Error("Failed to change to log folder")
 			return nil
 	}
-	// create the logs folder
-	err = os.Mkdir(PathVars.DestinationPath, fs.ModePerm)
+	// create the destination folder
+	err = os.Mkdir(strings.TrimPrefix(PathVars.DestinationPath, "logs/"), fs.ModePerm)
 	if err != nil && !errors.Is(err, os.ErrExist) {
 		li.Logger.L.WithFields(logrus.Fields{
 			"called from": CallFrom,
@@ -106,12 +108,12 @@ func ProcessLogFileLocations() map[string]string {
 		}).Error("Failed to create destination folder")
 		return nil
 	}
-
+	li.Logger.L.Printf("Created destination folder: %s", PathVars.DestinationPath)
 	// create the log files
 	// create the files
 	// move to the logs folder
-	err = ChangePath(dir + PathVars.LogPath)
-	CallFrom = "ProcessLogFileLocations"
+	err = ChangePath(dir + "/" + PathVars.LogPath)
+	CallFrom = "ProcessLogFileLocations "
 	if err != nil {
 		li.Logger.L.WithFields(logrus.Fields{
 			"err": err,
@@ -120,19 +122,26 @@ func ProcessLogFileLocations() map[string]string {
 	}
 	// create the log files
 	err = createLogFiles(strings.TrimPrefix(PathVars.DbLogs, "/logs/"))
-	CallFrom = "ProcessLogFileLocations"
+	CallFrom = "ProcessLogFileLocations "
 	if err != nil {
 		li.Logger.ErrCreateFilesMessage(CallFrom, PathVars.DbLogs, err)
 	}
 	err = createLogFiles(strings.TrimPrefix(PathVars.AnalysisLogs, "/logs/"))
-	CallFrom = "ProcessLogFileLocations"
+	CallFrom = "ProcessLogFileLocations "
 	if err != nil {
 		li.Logger.ErrCreateFilesMessage(CallFrom, PathVars.AnalysisLogs, err)
 	}
 	err = createLogFiles(strings.TrimPrefix(PathVars.OddDates, "/logs/"))
-	CallFrom = "ProcessLogFileLocations"
+	CallFrom = "ProcessLogFileLocations "
 	if err != nil {
 		li.Logger.ErrCreateFilesMessage(CallFrom, PathVars.OddDates, err)
+	}
+	li.Logger.L.Info("Log file creation complete")
+	// return to the working directory
+	err = ChangePath(dir)
+	if err != nil {
+		li.Logger.L.Println("Failed to change directory to working directory")
+		return nil
 	}
 	return logFiles
 }
@@ -166,10 +175,9 @@ func createLogFiles(filename string) error {
 // Close file resources
 func Close() {
 	// close the log files
-	CloseFile(LogFileLiterals["SourcePath"])
-	CloseFile(LogFileLiterals["SourcePathCDR"])
-	CloseFile(LogFileLiterals["ExtensionsFile"])
-	CloseFile(LogFileLiterals["DestinationPath"])
+	CloseFile(LogFileLiterals["DbLogs"])
+	CloseFile(LogFileLiterals["AnalysisLogs"])
+	CloseFile(LogFileLiterals["OddDates"])
 }
 
 // close the logFile

@@ -1,0 +1,12 @@
+#!/bin/bash
+echo "Running MySQL user creation script..."
+
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<-EOSQL
+CREATE DATABASE IF NOT EXISTS Rmsdb;
+
+CREATE USER '${DB_USER}'@'192.168.128.4' IDENTIFIED BY '${DB_PASSWORD}';
+
+GRANT ALL PRIVILEGES ON Rmsdb.* TO '${DB_USER}'@'192.168.128.4';
+
+FLUSH PRIVILEGES;
+EOSQL

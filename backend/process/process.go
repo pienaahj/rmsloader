@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -47,85 +47,59 @@ func GetDataLocation() *time.Location {
 	return Loc
 }
 
-// Process
-func Process(ctx context.Context, path string, r *model.RMSCDR, db *sqlx.DB) error {
-	CallFrom = "Call from Process "
-	// Populate the LogFiles map
-	// model.ProcessLogFileLocations()
-	// open the database log file
-	// fmt.Println("file to open or create dbLogs:", DbLogs)
-	f, err := os.OpenFile(DbLogs, os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		return fmt.Errorf("%s, could not create database log file: %v", CallFrom, err)
-	}
-	// the file will be closed by a close function in main
-	// get the folder contents
-	folders, err := ReadFolders(path)
-	if err != nil {
-		return fmt.Errorf("could not read the source folders: %v", err)
-	}
-	li.Logger.L.Println("all source folders read...")
-	// loop through the folders
-	var filenames []string
+// Process all csv files in path
+func Process(ctx context.Context, path string, db *sqlx.DB) error {
+	CallFrom = "Process "
 	var cdrs []model.RMSCDR
 	batchSize := 100              // Adjust as needed
 	var TotCount int64 = 0
 	var batch []model.RMSCDR// Struct representing the CDR table
-	for _, folder := range folders {
-		// convert the folder to an int
-		folderNumber, err := strconv.Atoi(folder)
-		if err != nil {
-			return fmt.Errorf("could not convert folder to int: %v", err)
-		}
-		// don't process any folder with a smaller extension number than the start folder
-		if folderNumber < StartFolder {
+	// var err error
+	cdrs, err := ProcessAllCSVFiles(path, model.LogFileLiterals[strings.TrimPrefix(model.PathVars.AnalysisLogs, "/logs/")], ".csv")
+	if err != nil {
+		li.Logger.L.WithFields(logrus.Fields{
+			"CallFrom": CallFrom,
+			"err": err,
+		}).Error("error while reading the csv files")
+		return err
+	}
+	// check that files were processed
+	if len(cdrs) == 0 {
+		li.Logger.L.Info(CallFrom, "no files to process")
+		return fmt.Errorf("no files to process")
+	}
+	// loop through all the slice of cdrs returned and add them to the db
+	for _, cdr := range cdrs {
+		// Check if the record should be skipped
+		if uid, errDb := dbs.GetCDRByUID(context.Background(), db, cdr.UID);  cdr.UID == uid {
+			li.Logger.L.Info(CallFrom, "record already exists in db, skipping cdr: ", cdr.UID)
 			continue
+		} else if errDb != nil && errDb.Error() == "table does not exist"{
+			li.Logger.L.WithFields(logrus.Fields{
+				"CallFrom": CallFrom,
+				"err": err,
+			}).Error("db empty")
 		}
-		// change the active folder to the source
-		if _, err := os.Stat(SourcePath); os.IsNotExist(err) {
-			return fmt.Errorf("could not find the source folder: %v", err)
-		}
-		err = ChangePath(SourcePath)
-		if err != nil {
-			return fmt.Errorf("could not change to the source folder: %v", err)
-		}
-		// store the active folder to SubFolder global variable
-		SubFolder = folder
-		// get the cdrs in that folder
-		cdrs, err = ProcessAllCSVFiles(folder, f, "csv",)
-		if err != nil {
-			return fmt.Errorf("could not read the files: %v", err)
-		}
-		li.Logger.L.Printf("Processing folder: %s with number of files %d", folder, len(filenames))
-		// loop through all the slice of cdrs and add them to the db
-		for _, cdr := range cdrs {
-			// Check if the record should be skipped
-			if uid, _ := dbs.GetCDRByUID(context.Background(), db, cdr.UID);  cdr.UID == uid {
-				li.Logger.L.Info(CallFrom, "record already exists in db, skipping cdr: ", cdr.UID)
-				continue
-			}
 
-			batch = append(batch, cdr)
+		batch = append(batch, cdr)
 
-			// Process batch if it reaches the batchSize limit
-			if len(batch) >= batchSize {
-				count, err := dbs.InsertCDRsBatch(ctx, db, batch)
-				if err != nil {
-					return err
-				}
-				TotCount += count
-				batch = batch[:0] // Reset batch
-			}
-		}
-		// Insert any remaining records
-		if len(batch) > 0 {
+		// Process batch if it reaches the batchSize limit
+		if len(batch) >= batchSize {
 			count, err := dbs.InsertCDRsBatch(ctx, db, batch)
 			if err != nil {
 				return err
 			}
 			TotCount += count
+			batch = batch[:0] // Reset batch
 		}
-
+	}
+	// Insert any remaining records
+	if len(batch) > 0 {
+		count, err := dbs.InsertCDRsBatch(ctx, db, batch)
+		if err != nil {
+			return err
+		}
+		TotCount += count
 	}
 	li.Logger.L.Printf("Total records processed: %d", TotCount)
 	return nil
@@ -133,7 +107,7 @@ func Process(ctx context.Context, path string, r *model.RMSCDR, db *sqlx.DB) err
 
 // ReadFolders reads all folders in a folder and returns it as a slice
 func ReadFolders(path string) ([]string, error) {
-	CallFrom = "Call from ReadFolders"
+	CallFrom = "ReadFolders "
 	// get the directory contents
 	var folders []string
 	files, err := os.ReadDir(path)

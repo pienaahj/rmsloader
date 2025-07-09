@@ -32,21 +32,25 @@ const (
 
 func main() {
 	// Block until an interrupt signal is received
+	fmt.Println("Main started") // <<< this should appear regardless
+	// create the context
+	ctx , cancel := context.WithCancel(context.Background())
+	defer cancel()
 	// Start signal listener in a separate goroutine
 	go func() {
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 		<-sigs
-		fmt.Println("go-updater shutting down gracefully")
-		GracefulShutdown(nil) // Call shutdown logic
+		fmt.Println("rmsloader shutting down gracefully")
+		cancel()
 	}()
 
 	// check the directories
 	fileSystem, _ := os.Getwd()
 	// Start the app logger
 	li.CreateLogger()
-	fmt.Println("go-updater is running...")
-	fmt.Println("Current working directory: ", fileSystem)
+	li.Logger.L.Println("rmsloader is running...")
+	li.Logger.L.Println("Current working directory: ", fileSystem)
 	// Populate the LogFiles map
 	model.ProcessLogFileLocations()
 
@@ -91,8 +95,7 @@ func main() {
 		}
 	}()
 
-	// create the context
-	ctx := context.Background()
+	
 	// Get the username and password
 	// config := LoadEnvironment(false, "cdr")
 	// load the tls config
@@ -104,7 +107,6 @@ func main() {
 	})
 	// initialize the db connection
 	li.Logger.L.Println("Connecting to database...")
-	// fmt.Println("Connecting to database with config: ", config.FormatDSN())
 	// load the mysql config
 	configcdr := LoadEnvironment(true, "cdr")
 	li.Logger.L.Printf("Connecting to mysql databases cdr with config: %#v", configcdr)
@@ -115,8 +117,6 @@ func main() {
 		// For example, to skip server certificate verification:
 		InsecureSkipVerify: true,
 	})
-	// delay the connection for a few seconds to allow the database to start
-	// time.Sleep(10 * time.Second)
 	// Retry connecting to the MySQL server
 	for i := 0; i < maxRetries; i++ {
 		db, err = sqlx.Connect("mysql", configcdr.FormatDSN())
@@ -137,7 +137,7 @@ func main() {
 	}
 	if db == nil {
 		li.Logger.ErrMySQLConnectionMessage("config failed after muliple tries", err)
-		model.Log.Println("Could not connect to db after mulitple tries, error ", err.Error())
+		li.Logger.L.Println("Could not connect to db after mulitple tries, error ", err.Error())
 		os.Exit(1)
 	}
 	defer db.Close()
@@ -148,9 +148,9 @@ func main() {
 	li.Logger.L.Info("Starting process")
 	li.Logger.L.Info("Proccessing db")
 	// make a new db object
-	dbs := &model.RMSCDR{}
-	li.Logger.L.Println("Proccessing csv files...")
-	err = process.Process(ctx, model.PathVars.SourcePath, dbs, db)
+
+	li.Logger.L.Printf("Main: Proccessing csv files at %s", model.PathVars.CSVPath)
+	err = process.Process(ctx, model.PathVars.CSVPath, db)
 	if err != nil {
 		li.Logger.L.WithFields(logrus.Fields{
 			"error": err,
@@ -162,6 +162,10 @@ func main() {
 
 	li.Logger.L.Println("****************************************************************")
 	li.Logger.L.Println()
+	li.Logger.L.Println("RMSLOADER COMPLETED SUCCESSFULLY")
+	li.Logger.L.Println("****************************************************************")
+	li.Logger.L.Println()
+	GracefulShutdown(db)
 
 }
 
