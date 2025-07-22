@@ -43,7 +43,7 @@ type RMSCDR struct {
 	// The Direction
 	Direction string `db:"direction" json:"direction"`
 	// The recording date
-	Time time.Time `db:"time" json:"time`
+	Time time.Time `db:"time" json:"time"`
 	// timestamp
 	UnixTimestamp int64 `db:"unix_timestamp" json:"unix_timestamp"`
 	// flagged
@@ -64,10 +64,10 @@ type RMSCDR struct {
 	LocalCopy bool `db:"local_copy" json:"local_copy"`
 	// Is Authentic
 	Authentic string `db:"authentic" json:"authentic"`
-	// sip call ID
-	SipCallID string `db:"sip_call_id" json:"sip_call_id"`
 	// The raw string representation of filename
 	FileName string `db:"file_name" json:"file_name"`
+	// sip call ID
+	SipCallID string `db:"sip_call_id" json:"sip_call_id"`
 }
 
 // cater for the duration conversion and database storage

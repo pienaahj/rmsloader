@@ -159,7 +159,7 @@ func readCSV(filename string) ([]model.RMSCDR, error) {
 		return nil, err
 	}
 	defer csvFile.Close()
-	li.Logger.L.Printf("Opened CSV file: %s", csvFile.Name())
+	li.Logger.L.Printf("%s: Opened CSV file: %s", CallFrom, csvFile.Name())
 	// Dumping the contents of the file
 	// li.Logger.L.Println("Dumping the contents of the file:")
 	// spew.Dump(csvFile)
@@ -184,11 +184,12 @@ func readCSV(filename string) ([]model.RMSCDR, error) {
 	}
 
 	var cdrData []model.RMSCDR
-	
+	// keeptrack of the missing leading zero count
+	var count int
 	// loop through the lines and create a struct
 	for i, line := range csvLines {
 		// print the row to logs
-		li.Logger.L.Info("Line: ", line)
+		li.Logger.L.Info(CallFrom,"Line: ", line)
 		// check for too few columns in line
 		const expectedFields = 12
 		if len(line) < expectedFields {
@@ -197,6 +198,7 @@ func readCSV(filename string) ([]model.RMSCDR, error) {
 		}
 		// skip the header row
 		if strings.Contains(line[0], "Direction") {
+			li.Logger.L.Printf("%s Skipping header row: %s", CallFrom, line[0])
 			continue
 		}
 		// build the field values
@@ -239,18 +241,28 @@ func readCSV(filename string) ([]model.RMSCDR, error) {
 		}
 		// convert the exists
 		var exists bool
-		if line[6] == "Yes" {
+		if line[7] == "Yes" {
 			exists = true
 		} else {
 			exists = false
 		}
 		var localCopy bool
-		if line[7] == "Yes" {
+		if line[8] == "Yes" {
 			localCopy = true
 		} else {
 			localCopy = false
 		}
-		
+		// correct the source wth no leading zero
+		countZero, source := addPrefix(line[3])
+		if countZero > 0 {
+			count += countZero
+		}
+		countZero, destination := addPrefix(line[4])
+		if countZero > 0 {
+			count += countZero
+		}
+		li.Logger.L.Println(CallFrom, "Filename: ", line[10])
+		li.Logger.L.Println(CallFrom, "SipCallID: ", line[11])
 
 		// build the struct
 		cdrData = append(cdrData, model.RMSCDR{
@@ -260,19 +272,20 @@ func readCSV(filename string) ([]model.RMSCDR, error) {
 			Time:         timestamp,
 			UnixTimestamp:    int64(timestamp.Unix()),
 			Flagged:      flagged,
-			Source:       line[3],
-			Destination:  line[4],
+			Source:       source,
+			Destination:  destination,
 			TalkDuration: duration,
 			Duration:     talkDurationSeconds.(int64),
 			Size: 		  size,
 			ExistsINDB:  exists,
 			LocalCopy:    localCopy,
 			Authentic:    line[9],
-			SipCallID:    line[10],
-			FileName:    line[11],
+			FileName:    line[10],
+			SipCallID:    line[11],
 		})
 	}
 	li.Logger.L.Printf("%s: RMS CDR Data records added: %#v", CallFrom, len(cdrData))
+	li.Logger.L.Printf("%s, Number of missing leading zeros: %d in file: %s ", CallFrom, count, filename)
 	return cdrData, nil
 }
 
@@ -323,4 +336,19 @@ func sanitizeCSV(r io.Reader) io.Reader {
             return r == '\r'
         }),
     ))
+}
+// addprefix adds a leading zero or plus to the callTo of callFrom fields
+func addPrefix(d string) (int, string) {
+	var count int
+
+	// if lenght 9 add zero
+	if len(d) == 9 {
+		d = "0" + d
+		count++
+		// 	// if lenght 11 add +
+		// } else if len(d) == 11 {
+		// 	d = "+" + d
+		// 	count++
+	}
+	return count, d
 }

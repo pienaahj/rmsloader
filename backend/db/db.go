@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS rmscdr (
 	exists_in_db TINYINT(1), 
 	local_copy TINYINT(1),     
 	authentic VARCHAR(20),
-	sip_call_id VARCHAR(150),
 	file_name VARCHAR(100),
+	sip_call_id VARCHAR(150),
 	INDEX (unix_timestamp, uid)
 );`
 
@@ -111,8 +111,8 @@ func AddCDR(ctx context.Context, db *sqlx.DB, r *model.RMSCDR) (int64, error) {
 	tx := db.MustBeginTx(ctx, &sql.TxOptions{Isolation: 6, ReadOnly: false})
 	// spew.Dump(r)
 	//durationInSeconds := int64(record.Duration.Seconds())
-	res, err := tx.NamedExecContext(ctx, `INSERT INTO rmscdr (uid, direction, time, unix_timestamp, flagged, source, destination, duration, size, exists_in_db, local_copy, authentic, sip_call_id, file_name)
-		 VALUES (:uid, :direction, :time, :unix_timestamp, :flagged, :source, :destination, :duration, :size, :exists_in_db, :local_copy, :authentic, :sip_call_id, :file_name)`, r)
+	res, err := tx.NamedExecContext(ctx, `INSERT INTO rmscdr (uid, direction, time, unix_timestamp, flagged, source, destination, duration, size, exists_in_db, local_copy, authentic, file_name , msip_call_id )
+		 VALUES (:uid, :direction, :time, :unix_timestamp, :flagged, :source, :destination, :duration, :size, :exists_in_db, :local_copy, :authentic, :file_name, :sip_call_id)`, r)
 	if err != nil {
 		li.Logger.L.Printf("problematic cdr: %#v", r)
 		li.Logger.ErrMySQLWriteMessage(CallFrom, err)
@@ -157,8 +157,9 @@ func InsertCDRsBatch(ctx context.Context, db *sqlx.DB, batch []model.RMSCDR) (in
 			li.Logger.L.Info(CallFrom, msg)
 		}
 	}
-	query := `INSERT INTO rmscdr (uid, direction, time, unix_timestamp, flagged, source, destination, duration, size, exists_in_db, local_copy, authentic, sip_call_id, file_name)
-		 VALUES (:uid, :direction, :time, :unix_timestamp, :flagged, :source, :destination, :duration, :size, :exists_in_db, :local_copy, :authentic, :sip_call_id, :file_name)`
+	li.Logger.L.Printf("%s: Inserting batch of %d records, values: %#v", CallFrom, len(batch), batch)
+	query := `INSERT INTO rmscdr (uid, direction, time, unix_timestamp, flagged, source, destination, duration, size, exists_in_db, local_copy, authentic, file_name, sip_call_id )
+		 VALUES (:uid, :direction, :time, :unix_timestamp, :flagged, :source, :destination, :duration, :size, :exists_in_db, :local_copy, :authentic, :file_name, :sip_call_id )`
 	res, err := db.NamedExecContext(ctx, query, batch)
 	if err != nil {
 		return 0, err

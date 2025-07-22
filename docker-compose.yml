@@ -1,7 +1,7 @@
 networks:
   net:
     driver: bridge
-    name: rms_net
+    name: rmsloader_net
     ipam:
       config:
         - subnet: 192.168.128.0/20  # Define the subnet for the network
@@ -24,7 +24,7 @@ services:
       # - "--entrypoints.web.address=:80"
       # - "--entrypoints.websecure.address=:443"
       #- "--entrypoints.mysql.address=192.168.128.10:3306"
-      - "--providers.docker.network=rms_net" # Specify the Docker network
+      - "--providers.docker.network=rmsloader_net" # Specify the Docker network
       - "--log.level=DEBUG" # Optional: Set log level to DEBUG for troubleshooting
       - "--log.filePath=/traefik.log" # Optional: Log file path
     ports:
